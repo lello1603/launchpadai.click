@@ -150,6 +150,7 @@ const VibeStats = () => {
     setIsSyncing(true);
     try {
       const c = await fetchGlobalEmpireCount();
+      console.log('[LaunchPad] Updating global empire count to:', c);
       setCount(c);
       
       const dbResponse = await fetchLatestShouts(1); 
@@ -214,10 +215,10 @@ const VibeStats = () => {
             <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Global Empires Built</span>
           </div>
           <div className="text-5xl font-black tracking-tighter text-white tabular-nums leading-none min-w-[120px]">
-            {count === 0 ? '...' : <AnimatedNumber value={count} />}
+            <AnimatedNumber value={count || 0} />
           </div>
           <p className="text-[9px] font-bold text-indigo-400 uppercase tracking-[0.3em] mt-2 opacity-80">
-            {isSyncing ? 'Refreshing Archive...' : 'Connected to Archives 🏛️'}
+            {isSyncing ? 'Refreshing archive…' : 'Connected to archives 🏛️'}
           </p>
         </div>
       </motion.div>

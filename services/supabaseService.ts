@@ -134,12 +134,28 @@ export const fetchMemoryMap = async (): Promise<string> => {
 };
 
 export const fetchGlobalEmpireCount = async (): Promise<number> => {
-  const BASELINE = 425; 
-  if (!supabase) return BASELINE; 
+  const BASELINE = 425;
+
+  if (!supabase) {
+    console.warn('[LaunchPad] Supabase client not initialized, using baseline count.');
+    return BASELINE;
+  }
+
   try {
-    const { count } = await supabase.from('projects').select('*', { count: 'exact', head: true });
-    return (count || 0) + BASELINE;
+    const { count, error } = await supabase
+      .from('projects')
+      .select('*', { count: 'exact', head: true });
+
+    if (error) {
+      console.error('[LaunchPad] Supabase projects count error:', error);
+      return BASELINE;
+    }
+
+    const safeCount = (count ?? 0) + BASELINE;
+    console.log('[LaunchPad] Global empire count from Supabase:', safeCount);
+    return safeCount;
   } catch (err) {
+    console.error('[LaunchPad] fetchGlobalEmpireCount failed:', err);
     return BASELINE;
   }
 };
