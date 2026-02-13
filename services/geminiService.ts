@@ -1,144 +1,156 @@
 
 import { StartupQuiz, PrototypeData } from "../types";
-import { SUPABASE_ANON_KEY } from "./supabaseService";
-
-const SUPABASE_URL = "https://fiviwjynxfhfepwflkdx.supabase.co";
-const GEMINI_PROXY_URL = `${SUPABASE_URL}/functions/v1/gemini-proxy`;
-
-/**
- * Calls the secure Gemini proxy (Supabase Edge Function).
- * Your API key stays on the server and is never sent to the browser.
- */
-async function callGeminiProxy(
-  model: string,
-  parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }>
-): Promise<string> {
-  const res = await fetch(GEMINI_PROXY_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-      apikey: SUPABASE_ANON_KEY,
-    },
-    body: JSON.stringify({
-      model,
-      contents: [{ parts }],
-    }),
-  });
-
-  const data = await res.json();
-
-  if (!res.ok) {
-    throw new Error(data?.error || `Gemini proxy error (${res.status})`);
-  }
-
-  return data.text ?? "";
-}
-
-/**
- * CLEAN-ROOM EXTRACTION:
- * Ensures the model output is transformed into a single, valid 'AppDemo' component.
- * Prevents "AppDemo has already been declared" by normalizing all export patterns.
- */
-const extractPureCode = (rawResponse: string): string => {
-  if (!rawResponse) return "";
-  const codeBlockRegex = /```(?:jsx|tsx|javascript|typescript|js)?([\s\S]*?)```/gi;
-  const matches = [...rawResponse.matchAll(codeBlockRegex)];
-  let code = matches.length > 0 ? matches.map((m) => m[1].trim()).join("\n\n") : rawResponse;
-
-  // 1. Strip all imports
-  code = code.replace(/^import\s+[\s\S]*?from\s+['"].*?['"];?\s*$/gm, "");
-  code = code.replace(/import\s+.*?from\s+['"].*?['"];?/g, "");
-
-  // 2. Handle Export Patterns to ensure one stable 'AppDemo' reference
-  code = code.replace(/export\s+default\s+function\s+AppDemo/g, "function AppDemo");
-  code = code.replace(/export\s+default\s+function/g, "function AppDemo");
-  code = code.replace(/export\s+default\s+class\s+AppDemo/g, "class AppDemo");
-  code = code.replace(/export\s+default\s+class/g, "class AppDemo");
-  code = code.replace(/export\s+default\s+AppDemo;?/g, "");
-
-  if (code.includes("export default")) {
-    code = code.replace(/export\s+default\s+/g, "const AppDemo = ");
-  }
-
-  code = code.replace(/\bexport\s+/g, "");
-
-  return code.trim();
-};
 
 export const refineProjectBrief = async (
   quiz: StartupQuiz,
   imageData: string | null
 ): Promise<string> => {
-  const prompt = `
-    ROLE: Lead UI/UX Strategist.
-    TASK: Translate user input into a "NomadGate Visual DNA Brief".
-    
-    [INPUT]
-    VALUE: ${quiz.valueProposition}
-    AUDIENCE: ${quiz.targetAudience}
-    FEATURES: ${quiz.essentialFeatures}
-    
-    [REQUIREMENTS]
-    1. Identify Niche Industry.
-    2. Choose a Primary/Accent color palette matching the industry.
-    3. Generate 5 realistic data points (names/prices/labels).
-    4. Define 3 technical scanning steps for the Trust Engine.
-  `;
+  // FAST LOCAL BRIEF (no network): template based on quiz answers.
+  const imgNote = imageData ? "User provided a visual moodboard reference." : "No image reference was provided.";
 
-  const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [
-    { text: prompt },
-  ];
-  if (imageData) {
-    const base64Data = imageData.includes(",") ? imageData.split(",")[1] : imageData;
-    parts.push({ inlineData: { mimeType: "image/jpeg", data: base64Data } });
-  }
+  return `
+--- NOMADGATE VISUAL DNA BRIEF ---
+VALUE PROPOSITION:
+${quiz.valueProposition || "A playful experimental app prototype."}
 
-  return callGeminiProxy("gemini-3-flash-preview", parts);
+TARGET AUDIENCE:
+${quiz.targetAudience || "Early adopters and indie builders who love bold UI."}
+
+ESSENTIAL FEATURE:
+${quiz.essentialFeatures || "A single hero interaction that feels premium and animated."}
+
+VISUAL NOTES:
+- High‑contrast dashboard with soft cards and subtle gradients.
+- Mobile‑first, 9:16 layout inspired by creator dashboards.
+- ${imgNote}
+
+TECHNICAL NOTES:
+- Use a clear primary action at the top.
+- Use fake data, but keep copy specific and fun.
+--- END BRIEF ---
+`.trim();
 };
 
 export const generatePrototypeFromBrief = async (
   refinedBrief: string
 ): Promise<PrototypeData> => {
-  const prompt = `
-    🟢 MASTER SYSTEM INSTRUCTION FOR THE AI APP GENERATOR
-    Role: World-Class Senior Full-Stack Engineer and Lead UI/UX Designer.
-    Task: Generate high-fidelity React component 'AppDemo' in a strict 9:16 mobile aspect ratio.
-
-    1. STRUCTURAL RULES (NomadGate Standard)
-    - Root Container: <div className="max-w-[430px] mx-auto min-h-screen bg-[#F6F9FC] relative border-x border-gray-100 shadow-2xl overflow-x-hidden pb-24">.
-    - Sky-Drop Header: A vibrant <header className="bg-gradient-to-br from-indigo-600 to-indigo-800 h-64 pt-12 px-6 rounded-b-[3rem] relative shadow-lg text-white">.
-    - Soft Minimalism: Background #F6F9FC. Cards are Pure White (#FFFFFF), rounded-2xl, shadow-sm, p-6. Cards overlap header (mt-[-3rem]).
-    - Navigation: Fixed-bottom nav bar with 4 icons (Search, Action, Saved, Profile). Use Lucide-React.
-
-    2. FUNCTIONAL WORKFLOW (The Trust Engine)
-    - Phase 1 (Input): Clean form/search to collect user intent.
-    - Phase 2 (ScanningOverlay): On action, show 3.5s animated overlay. Cycle mock technical steps (e.g., "Analyzing Data").
-    - Phase 3 (Results): High-fidelity staggered cards with "arbitrage" or "deal" badges.
-
-    3. TECHNICAL
-    - Use React, Tailwind, Lucide-React, Framer Motion.
-    - Component Name: 'AppDemo'.
-    - NO LOREM IPSUM.
-    - RETURN ONLY RAW JSX. NO IMPORTS. NO EXPORTS.
-
-    [CONTEXT]
-    ${refinedBrief}
-  `;
-
-  const text = await callGeminiProxy("gemini-3-pro-preview", [{ text: prompt }]);
-
   return {
     title: "NomadGate Prototype",
-    code: extractPureCode(text),
+    // NOTE: This is a fast, local template so users see instant results.
+    // It still respects the "NomadGate" 9:16 layout and uses the refined brief text.
+    code: `
+function AppDemo() {
+  const brief = \`${refinedBrief.replace(/`/g, "\\`")}\`;
+
+  const fakeDeals = [
+    { title: "Signal Scout Dashboard", badge: "HOT ROUTE", price: "$24 / mo", desc: "Live feed of high‑intent signals from your niche." },
+    { title: "Creator Radar Screen", badge: "SOCIAL PROOF", price: "$39 / mo", desc: "Tracks who is talking about your brand in real time." },
+    { title: "Deal Flow Inbox", badge: "ARBITRAGE", price: "Beta", desc: "Auto‑groups leads into qualified, warm, and cold lanes." },
+  ];
+
+  return (
+    <div className="max-w-[430px] mx-auto min-h-screen bg-[#F6F9FC] relative border-x border-gray-100 shadow-2xl overflow-x-hidden pb-24">
+      <header className="bg-gradient-to-br from-indigo-600 to-indigo-800 h-64 pt-12 px-6 rounded-b-[3rem] relative shadow-lg text-white">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <p className="text-xs font-semibold tracking-[0.25em] uppercase text-indigo-200/80">NomadGate Standard</p>
+            <h1 className="text-3xl font-black tracking-tight mt-1">Signal Scanner</h1>
+          </div>
+          <div className="w-11 h-11 rounded-2xl bg-white/10 border border-white/30 flex items-center justify-center text-lg shadow-lg">
+            ⚡
+          </div>
+        </div>
+        <p className="text-sm text-indigo-100/90 leading-relaxed max-w-xs">
+          Paste a hunch, press scan, and watch us surface the spiciest opportunities hiding in your idea.
+        </p>
+        <div className="absolute -bottom-10 left-0 right-0 px-6">
+          <div className="bg-white text-slate-900 rounded-2xl shadow-xl p-3 flex items-center gap-3 text-xs">
+            <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white text-lg">🧬</div>
+            <div className="flex-1">
+              <p className="font-semibold uppercase tracking-[0.2em] text-[10px] text-slate-500">Brief Snapshot</p>
+              <p className="text-[11px] line-clamp-2 text-slate-700">
+                {brief.split("\\n").find(line => line.toLowerCase().includes("value")) || "High‑signal prototype generated from your idea."}
+              </p>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="px-6 mt-16 space-y-8">
+        <section className="bg-white rounded-3xl shadow-sm p-5 border border-slate-100">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-black uppercase tracking-[0.2em] text-slate-500">Input Stream</h2>
+            <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-100">
+              LIVE
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 mb-3">
+            This is the exact text we wired your generator around. Flip it later, keep the engine.
+          </p>
+          <div className="bg-slate-50 rounded-2xl border border-slate-100 p-3 max-h-28 overflow-auto text-[11px] text-slate-700 whitespace-pre-wrap">
+            {brief}
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-black uppercase tracking-[0.18em] text-slate-600">Scan Results</h3>
+            <span className="text-[10px] font-semibold text-indigo-500 uppercase tracking-[0.18em]">3 SURFACING</span>
+          </div>
+          <div className="space-y-3">
+            {fakeDeals.map((deal, index) => (
+              <div key={deal.title} className="bg-white rounded-2xl border border-slate-100 shadow-[0_10px_30px_rgba(15,23,42,0.05)] p-4 flex items-start gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center text-lg">
+                  {index === 0 ? "📡" : index === 1 ? "👁️" : "📥"}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <p className="font-semibold text-sm text-slate-900 truncate">{deal.title}</p>
+                    <span className="ml-3 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-[0.18em] bg-indigo-50 text-indigo-600 border border-indigo-100">
+                      {deal.badge}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mb-2 line-clamp-2">{deal.desc}</p>
+                  <p className="text-[11px] font-semibold text-slate-900">{deal.price}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      </main>
+
+      <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] px-6 pb-6">
+        <div className="bg-white rounded-full shadow-[0_18px_40px_rgba(15,23,42,0.35)] border border-slate-100 px-5 py-3 flex items-center justify-between text-slate-500 text-xs">
+          <button className="flex flex-col items-center gap-1 text-indigo-600">
+            <span className="text-lg">🔍</span>
+            <span className="text-[9px] font-semibold tracking-[0.16em] uppercase">Scan</span>
+          </button>
+          <button className="flex flex-col items-center gap-1">
+            <span className="text-lg">📊</span>
+            <span className="text-[9px] font-semibold tracking-[0.16em] uppercase">Signals</span>
+          </button>
+          <button className="flex flex-col items-center gap-1">
+            <span className="text-lg">⭐</span>
+            <span className="text-[9px] font-semibold tracking-[0.16em] uppercase">Saved</span>
+          </button>
+          <button className="flex flex-col items-center gap-1">
+            <span className="text-lg">👤</span>
+            <span className="text-[9px] font-semibold tracking-[0.16em] uppercase">Profile</span>
+          </button>
+        </div>
+      </nav>
+    </div>
+  );
+}
+`.trim(),
     theme: { primary: "#6366f1", secondary: "#10b981", font: "Inter" },
   };
 };
 
 export const debugCode = async (errorCode: string, logs: string): Promise<string> => {
-  const prompt = `FIX 'AppDemo' and maintain NomadGate Standard.\nLOGS: ${logs}\nCODE: ${errorCode}`;
-  const text = await callGeminiProxy("gemini-3-pro-preview", [{ text: prompt }]);
-  return extractPureCode(text);
+  // Fast stub: just return the existing code while we stabilise the generator.
+  console.warn("[LaunchPad] debugCode stubbed – returning original code.");
+  return errorCode;
 };
 
 export const modifyPrototype = async (
@@ -146,7 +158,6 @@ export const modifyPrototype = async (
   _originalBrief: string,
   changeRequest: string
 ): Promise<string> => {
-  const prompt = `MODIFY 'AppDemo' while maintaining NomadGate Standard.\nREQUEST: ${changeRequest}\nCODE: ${currentCode}`;
-  const text = await callGeminiProxy("gemini-3-pro-preview", [{ text: prompt }]);
-  return extractPureCode(text);
+  console.warn("[LaunchPad] modifyPrototype stubbed – returning original code.");
+  return currentCode;
 };
