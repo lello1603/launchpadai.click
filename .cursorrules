@@ -1,0 +1,21 @@
+# LaunchPad App — Cursor Rules
+
+## Project
+- React + Vite + TypeScript app. Uses Tailwind and Framer Motion.
+- Domain: launchpadai.click. Hosted on Cloudflare.
+
+## Conventions
+- Components in `components/`, services in `services/`.
+- Use existing patterns (e.g. `motion as any` for framer-motion).
+- API keys live in Supabase Edge Function secrets, not in frontend code.
+
+## When you need user input
+- Ask one clear, specific question.
+- Avoid open-ended or multi-part questions when possible.
+- Example: "Which Git branch is connected to Cloudflare deploys?" instead of "How do you deploy?"
+
+## Reference
+- Read `CONTEXT.md` for deployment, services, and paths before making changes.
+
+## Maintenance
+- When you add configs, change deployment, add services, or alter paths, update `CONTEXT.md` yourself. Do not rely on the user to manually maintain it.

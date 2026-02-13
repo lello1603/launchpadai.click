@@ -1,0 +1,7 @@
+{
+  "name": "LaunchPad AI",
+  "description": "A high-end SaaS platform that turns raw startup ideas and design inspiration into functional code prototypes and master system prompts.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
