@@ -131,7 +131,8 @@ const AnimatedNumber = ({ value }: { value: number }) => {
 };
 
 const VibeStats = () => {
-  const [count, setCount] = useState(0);
+  // Start from baseline so UI never shows "..."
+  const [count, setCount] = useState(425);
   const [newShout, setNewShout] = useState('');
   const [isPosting, setIsPosting] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -218,7 +219,7 @@ const VibeStats = () => {
             <AnimatedNumber value={count || 0} />
           </div>
           <p className="text-[9px] font-bold text-indigo-400 uppercase tracking-[0.3em] mt-2 opacity-80">
-            {isSyncing ? 'Refreshing archive…' : 'Connected to archives 🏛️'}
+            Connected to archives 🏛️
           </p>
         </div>
       </motion.div>
