@@ -1,11 +1,9 @@
 
 import { StartupQuiz, PrototypeData } from "../types";
+import { supabase } from "./supabaseService";
 
-export const refineProjectBrief = async (
-  quiz: StartupQuiz,
-  imageData: string | null
-): Promise<string> => {
-  // FAST LOCAL BRIEF (no network): template based on quiz answers.
+// --- Fallback: fast local template used when Gemini fails or is unavailable ---
+const buildLocalBrief = (quiz: StartupQuiz, imageData: string | null): string => {
   const imgNote = imageData ? "User provided a visual moodboard reference." : "No image reference was provided.";
 
   return `
@@ -31,13 +29,9 @@ TECHNICAL NOTES:
 `.trim();
 };
 
-export const generatePrototypeFromBrief = async (
-  refinedBrief: string
-): Promise<PrototypeData> => {
+const buildLocalPrototype = (refinedBrief: string): PrototypeData => {
   return {
     title: "NomadGate Prototype",
-    // NOTE: This is a fast, local template so users see instant results.
-    // It still respects the "NomadGate" 9:16 layout and uses the refined brief text.
     code: `
 function AppDemo() {
   const brief = \`${refinedBrief.replace(/`/g, "\\`")}\`;
@@ -147,10 +141,132 @@ function AppDemo() {
   };
 };
 
+// --- Gemini via Supabase Functions (CORS‑safe) ---
+
+async function callGeminiProxy(
+  model: string,
+  contents: Array<{ parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> }>
+): Promise<string> {
+  if (!supabase) {
+    console.warn("[LaunchPad] Supabase client not initialized, falling back to local template.");
+    return "";
+  }
+
+  const { data, error } = await supabase.functions.invoke("gemini-proxy", {
+    body: { model, contents },
+  });
+
+  if (error) {
+    console.error("[LaunchPad] Gemini proxy error:", error);
+    return "";
+  }
+
+  // Edge function returns { text }
+  return (data as any)?.text ?? "";
+}
+
+// Extract code from Gemini response into a clean AppDemo component
+const extractPureCode = (rawResponse: string): string => {
+  if (!rawResponse) return "";
+
+  const codeBlockRegex = /```(?:jsx|tsx|javascript|typescript|js)?([\s\S]*?)```/gi;
+  const matches = [...rawResponse.matchAll(codeBlockRegex)];
+  let code = matches.length > 0 ? matches.map((m) => m[1].trim()).join("\n\n") : rawResponse;
+
+  // strip imports
+  code = code.replace(/^import\s+[\s\S]*?from\s+['"].*?['"];?\s*$/gm, "");
+  code = code.replace(/import\s+.*?from\s+['"].*?['"];?/g, "");
+
+  // normalize exports around AppDemo
+  code = code.replace(/export\s+default\s+function\s+AppDemo/g, "function AppDemo");
+  code = code.replace(/export\s+default\s+function/g, "function AppDemo");
+  code = code.replace(/export\s+default\s+class\s+AppDemo/g, "class AppDemo");
+  code = code.replace(/export\s+default\s+class/g, "class AppDemo");
+  code = code.replace(/export\s+default\s+AppDemo;?/g, "");
+
+  if (code.includes("export default")) {
+    code = code.replace(/export\s+default\s+/g, "const AppDemo = ");
+  }
+
+  code = code.replace(/\bexport\s+/g, "");
+
+  return code.trim();
+};
+
+// --- Public API ---
+
+export const refineProjectBrief = async (
+  quiz: StartupQuiz,
+  imageData: string | null
+): Promise<string> => {
+  const localBrief = buildLocalBrief(quiz, imageData);
+
+  // Try Gemini for a richer brief, fall back silently to local if it fails
+  try {
+    const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [
+      { text: `ROLE: Lead product strategist. Turn this into a sharp, structured brief.\n\n${localBrief}` },
+    ];
+
+    if (imageData) {
+      const base64Data = imageData.includes(",") ? imageData.split(",")[1] : imageData;
+      parts.push({ inlineData: { mimeType: "image/jpeg", data: base64Data } });
+    }
+
+    const text = await callGeminiProxy("gemini-3-flash-preview", [{ parts }]);
+    if (!text) return localBrief;
+    return text.trim();
+  } catch (err) {
+    console.error("[LaunchPad] refineProjectBrief fell back to local brief:", err);
+    return localBrief;
+  }
+};
+
+export const generatePrototypeFromBrief = async (
+  refinedBrief: string
+): Promise<PrototypeData> => {
+  // Try Gemini first, fall back to local template if anything goes wrong.
+  try {
+    const systemPrompt = `
+You are a senior React + Tailwind engineer.
+Generate a single high-fidelity mobile AppDemo component for the following brief.
+Return ONLY JSX for AppDemo, no imports, no exports.
+Brief:
+${refinedBrief}
+`.trim();
+
+    const text = await callGeminiProxy("gemini-3-pro-preview", [
+      { parts: [{ text: systemPrompt }] },
+    ]);
+
+    const code = extractPureCode(text);
+    if (!code) {
+      console.warn("[LaunchPad] Gemini returned empty code, using local template.");
+      return buildLocalPrototype(refinedBrief);
+    }
+
+    return {
+      title: "NomadGate Prototype",
+      code,
+      theme: { primary: "#6366f1", secondary: "#10b981", font: "Inter" },
+    };
+  } catch (err) {
+    console.error("[LaunchPad] generatePrototypeFromBrief failed, using local template:", err);
+    return buildLocalPrototype(refinedBrief);
+  }
+};
+
 export const debugCode = async (errorCode: string, logs: string): Promise<string> => {
-  // Fast stub: just return the existing code while we stabilise the generator.
-  console.warn("[LaunchPad] debugCode stubbed – returning original code.");
-  return errorCode;
+  try {
+    const prompt = `Fix the React component named AppDemo.\nLogs:\n${logs}\n\nCurrent Code:\n${errorCode}`;
+    const text = await callGeminiProxy("gemini-3-pro-preview", [
+      { parts: [{ text: prompt }] },
+    ]);
+    const code = extractPureCode(text);
+    return code || errorCode;
+  } catch (err) {
+    console.error("[LaunchPad] debugCode failed, returning original code:", err);
+    return errorCode;
+  }
 };
 
 export const modifyPrototype = async (
@@ -158,6 +274,15 @@ export const modifyPrototype = async (
   _originalBrief: string,
   changeRequest: string
 ): Promise<string> => {
-  console.warn("[LaunchPad] modifyPrototype stubbed – returning original code.");
-  return currentCode;
+  try {
+    const prompt = `You are updating a React component named AppDemo.\nApply this change request while keeping the structure clean:\n${changeRequest}\n\nCurrent Code:\n${currentCode}`;
+    const text = await callGeminiProxy("gemini-3-pro-preview", [
+      { parts: [{ text: prompt }] },
+    ]);
+    const code = extractPureCode(text);
+    return code || currentCode;
+  } catch (err) {
+    console.error("[LaunchPad] modifyPrototype failed, returning original code:", err);
+    return currentCode;
+  }
 };
