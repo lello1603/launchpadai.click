@@ -140,23 +140,12 @@ const App: React.FC = () => {
   }, [currentStep]);
 
   const checkGateOpen = async (): Promise<boolean> => {
-    if (isSuperUser) return true;
-    if (!userState.id) return false;
-    try {
-      const profile = await fetchUserProfile(userState.id);
-      if (!profile) return true; 
-      const hasCredit = profile.isSubscribed || profile.generationCount < 1;
-      setUserState(prev => ({ 
-        ...prev, 
-        generationCount: profile.generationCount, 
-        isSubscribed: profile.isSubscribed,
-        subscriptionExpiry: profile.subscriptionExpiry
-      }));
-      return hasCredit;
-    } catch { return true; }
+    // TEMP: allow all generations while we debug + wire billing
+    return true;
   };
 
   const handleStartGeneration = async (img: string | null) => {
+    console.log('[LaunchPad] handleStartGeneration called with image?', !!img);
     setImageData(img);
     if (!userState.id) {
       setShowAuth(true);
