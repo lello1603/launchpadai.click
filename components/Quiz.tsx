@@ -34,10 +34,14 @@ const Quiz: React.FC<Props> = ({ onComplete }) => {
       case 1:
         return (
           <motion.div initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="space-y-6">
-            <label className="block text-3xl font-black neon-cyan">So, what’s this big idea actually doing? ⚡</label>
+            <label htmlFor="quiz-value-proposition" className="block text-3xl font-black neon-cyan">
+              So, what’s this big idea actually doing? ⚡
+            </label>
             <p className="text-slate-400 font-medium">Keep it simple, like you're explaining it to a friend at a cafe.</p>
             <textarea 
               autoFocus
+              id="quiz-value-proposition"
+              name="valueProposition"
               className="w-full p-6 bg-white/5 border border-white/10 rounded-[2rem] text-white focus:ring-2 focus:ring-[#ff0050] focus:border-transparent outline-none h-40 text-xl font-bold"
               placeholder="e.g., An app that sends you a random meme every time your ex posts."
               value={data.valueProposition}
@@ -48,10 +52,14 @@ const Quiz: React.FC<Props> = ({ onComplete }) => {
       case 2:
         return (
           <motion.div initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="space-y-6">
-            <label className="block text-3xl font-black neon-cyan">Who is this for? 🔥</label>
+            <label htmlFor="quiz-target-audience" className="block text-3xl font-black neon-cyan">
+              Who is this for? 🔥
+            </label>
             <p className="text-slate-400 font-medium">Your friends? Creators? Small biz? The whole world?</p>
             <textarea 
               autoFocus
+              id="quiz-target-audience"
+              name="targetAudience"
               className="w-full p-6 bg-white/5 border border-white/10 rounded-[2rem] text-white focus:ring-2 focus:ring-[#ff0050] focus:border-transparent outline-none h-40 text-xl font-bold"
               placeholder="e.g., Tired students who need a laugh."
               value={data.targetAudience}
@@ -62,10 +70,14 @@ const Quiz: React.FC<Props> = ({ onComplete }) => {
       case 3:
         return (
           <motion.div initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="space-y-6">
-            <label className="block text-3xl font-black neon-cyan">What's the one 'must-have' feature? 🏆</label>
+            <label htmlFor="quiz-essential-features" className="block text-3xl font-black neon-cyan">
+              What's the one 'must-have' feature? 🏆
+            </label>
             <p className="text-slate-400 font-medium">The thing that makes it look super cool.</p>
             <textarea 
               autoFocus
+              id="quiz-essential-features"
+              name="essentialFeatures"
               className="w-full p-6 bg-white/5 border border-white/10 rounded-[2rem] text-white focus:ring-2 focus:ring-[#ff0050] focus:border-transparent outline-none h-40 text-xl font-bold"
               placeholder="e.g., A dark-mode dashboard with neon animations."
               value={data.essentialFeatures}

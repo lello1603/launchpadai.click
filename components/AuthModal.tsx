@@ -137,9 +137,16 @@ const AuthModal: React.FC<Props> = ({ isOpen, onClose, onSuccess }) => {
             {!isEmailSent && (
               <form onSubmit={handleSubmit} className="space-y-4">
                 <motion.div variants={itemVariants}>
-                  <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2 ml-1 text-left">Email Address</label>
+                  <label
+                    htmlFor="auth-email"
+                    className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2 ml-1 text-left"
+                  >
+                    Email Address
+                  </label>
                   <input 
-                    type="email" 
+                    type="email"
+                    id="auth-email"
+                    name="email"
                     required
                     placeholder="name@empire.com"
                     className="w-full px-5 py-4 bg-white/5 border border-white/10 rounded-2xl text-white outline-none focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/10 transition-all font-bold placeholder:text-slate-700"
@@ -150,13 +157,20 @@ const AuthModal: React.FC<Props> = ({ isOpen, onClose, onSuccess }) => {
 
                 <motion.div variants={itemVariants}>
                   <div className="flex justify-between items-center mb-2 ml-1">
-                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500">Password</label>
+                  <label
+                    htmlFor="auth-password"
+                    className="block text-[10px] font-black uppercase tracking-widest text-slate-500"
+                  >
+                    Password
+                  </label>
                     {mode === 'LOGIN' && (
                       <button type="button" className="text-[9px] font-black text-indigo-400 uppercase tracking-widest hover:text-white transition-colors">Forgot?</button>
                     )}
                   </div>
                   <input 
-                    type="password" 
+                    type="password"
+                    id="auth-password"
+                    name="password"
                     required
                     placeholder="••••••••"
                     className="w-full px-5 py-4 bg-white/5 border border-white/10 rounded-2xl text-white outline-none focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/10 transition-all font-bold placeholder:text-slate-700"
