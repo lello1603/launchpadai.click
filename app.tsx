@@ -190,14 +190,24 @@ const App: React.FC = () => {
     complexityTimerRef.current = setTimeout(() => {
       setShowComplexityPopup(true);
     }, 120000);
+
+    const GENERATION_TIMEOUT_MS = 48_000;
+
     try {
-      const brief = await refineProjectBrief(quizData!, img);
-      setGeneratedBrief(brief);
-      const proto = await generatePrototypeFromBrief(brief);
-      setPrototypeData(proto);
-      await finalizeGeneration(proto, brief);
+      await Promise.race([
+        (async () => {
+          const brief = await refineProjectBrief(quizData!, img);
+          setGeneratedBrief(brief);
+          const proto = await generatePrototypeFromBrief(brief);
+          setPrototypeData(proto);
+          await finalizeGeneration(proto, brief);
+        })(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Generation timed out. Please try again.')), GENERATION_TIMEOUT_MS)
+        ),
+      ]);
     } catch (err: any) {
-      setGenerationError(err.message);
+      setGenerationError(err?.message || 'Something went wrong. Please try again.');
       setCurrentStep(AppStep.REPAIRING);
     } finally {
       setIsProcessing(false);
@@ -206,23 +216,36 @@ const App: React.FC = () => {
     }
   };
 
+  const SAVE_TIMEOUT_MS = 12_000;
+
   const finalizeGeneration = async (prototype: PrototypeData, briefUsed: string) => {
     setPrototypeData(prototype);
     if (userState.id) {
-      const saved = await saveProject(userState.id, prototype.title, briefUsed, prototype.code, activeProjectId || undefined);
-      if (saved) {
-        setActiveProjectId(saved.id);
-        setUserProjects(prev => {
-          const filtered = prev.filter(p => p.id !== saved.id);
-          return [saved, ...filtered];
-        });
-        if (!activeProjectId) {
-          const nextCount = userState.generationCount + 1;
-          const updated = { ...userState, generationCount: nextCount };
-          setUserState(updated);
-          localStorage.setItem('launchpad_user', JSON.stringify(updated));
-          await syncUserProfile(userState.id, updated);
-        }
+      const uid = userState.id;
+      try {
+        const savePromise = (async () => {
+          const saved = await saveProject(uid, prototype.title, briefUsed, prototype.code, activeProjectId || undefined);
+          if (saved) {
+            setActiveProjectId(saved.id);
+            setUserProjects(prev => {
+              const filtered = prev.filter(p => p.id !== saved.id);
+              return [saved, ...filtered];
+            });
+            if (!activeProjectId) {
+              const nextCount = userState.generationCount + 1;
+              const updated = { ...userState, generationCount: nextCount };
+              setUserState(updated);
+              localStorage.setItem('launchpad_user', JSON.stringify(updated));
+              await syncUserProfile(uid, updated);
+            }
+          }
+        })();
+        await Promise.race([
+          savePromise,
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('save_timeout')), SAVE_TIMEOUT_MS)),
+        ]);
+      } catch (e) {
+        console.warn('[LaunchPad] Save/sync timed out or failed, continuing to dashboard:', e);
       }
     }
     if (isBackgroundMode) {
