@@ -10,6 +10,7 @@ interface Props {
 const ImageUpload: React.FC<Props> = ({ onComplete }) => {
   const [preview, setPreview] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
 
   const handleFile = (file: File | null) => {
     if (!file || !file.type.startsWith('image/')) return;
@@ -35,8 +36,19 @@ const ImageUpload: React.FC<Props> = ({ onComplete }) => {
     onComplete(preview);
   };
 
-  const handleSkip = () => {
-    onComplete(null);
+  const handleSkip = async () => {
+    if (isStarting) return;
+    setIsStarting(true);
+    try {
+      const result = onComplete(null);
+      if (result && typeof (result as Promise<unknown>).then === 'function') {
+        await (result as Promise<void>);
+      }
+    } catch (err) {
+      console.error('[ImageUpload] Skip & Generate error:', err);
+    } finally {
+      setIsStarting(false);
+    }
   };
 
   return (
@@ -83,6 +95,7 @@ const ImageUpload: React.FC<Props> = ({ onComplete }) => {
 
       <div className="flex flex-wrap gap-4 mt-10 justify-center">
         <button
+          type="button"
           onClick={handleContinue}
           disabled={!preview}
           className="px-10 py-4 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:scale-105 disabled:opacity-40 disabled:hover:scale-100 transition-all"
@@ -90,10 +103,12 @@ const ImageUpload: React.FC<Props> = ({ onComplete }) => {
           Generate with Image
         </button>
         <button
+          type="button"
           onClick={handleSkip}
-          className="px-10 py-4 bg-white/5 border border-white/10 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-white/10 transition-all"
+          disabled={isStarting}
+          className="px-10 py-4 bg-white/5 border border-white/10 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-white/10 hover:border-white/20 transition-all disabled:opacity-60 disabled:cursor-wait"
         >
-          Skip & Generate
+          {isStarting ? 'Starting…' : 'Skip & Generate'}
         </button>
       </div>
     </motion.div>

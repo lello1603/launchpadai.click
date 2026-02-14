@@ -90,7 +90,7 @@ const AuthModal: React.FC<Props> = ({ isOpen, onClose, onSuccess }) => {
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[500] flex items-center justify-center p-6">
+        <div className="fixed inset-0 z-[4000] flex items-center justify-center p-6">
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
