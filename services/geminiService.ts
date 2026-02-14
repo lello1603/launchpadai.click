@@ -10,6 +10,15 @@ const sanitizeBriefForUser = (text: string): string =>
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 
+/** Run a promise with a timeout; on timeout reject so caller can fall back. */
+const withTimeout = <T>(promise: Promise<T>, ms: number, label: string): Promise<T> =>
+  Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+    ),
+  ]);
+
 // --- Fallback: fast local template used when Gemini fails or is unavailable ---
 const buildLocalBrief = (quiz: StartupQuiz, imageData: string | null): string => {
   const imgNote = imageData ? "User provided a visual moodboard reference." : "No image reference was provided.";
@@ -210,7 +219,8 @@ export const refineProjectBrief = async (
 ): Promise<string> => {
   const localBrief = buildLocalBrief(quiz, imageData);
 
-  // Try Gemini for a richer brief, fall back silently to local if it fails
+  const BRIEF_TIMEOUT_MS = 14_000;
+
   try {
     const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [
       {
@@ -227,11 +237,15 @@ ${localBrief}`,
       parts.push({ inlineData: { mimeType: "image/jpeg", data: base64Data } });
     }
 
-    const text = await callGeminiProxy("gemini-3-flash-preview", [{ parts }]);
+    const text = await withTimeout(
+      callGeminiProxy("gemini-3-flash-preview", [{ parts }]),
+      BRIEF_TIMEOUT_MS,
+      "refineProjectBrief"
+    );
     if (!text) return localBrief;
     return sanitizeBriefForUser(text.trim());
   } catch (err) {
-    console.error("[LaunchPad] refineProjectBrief fell back to local brief:", err);
+    console.warn("[LaunchPad] refineProjectBrief fell back to local brief:", err);
     return localBrief;
   }
 };
@@ -239,7 +253,8 @@ ${localBrief}`,
 export const generatePrototypeFromBrief = async (
   refinedBrief: string
 ): Promise<PrototypeData> => {
-  // Try Gemini first, fall back to local template if anything goes wrong.
+  const PROTOTYPE_TIMEOUT_MS = 28_000;
+
   try {
     const systemPrompt = `
 You are a senior React + Tailwind engineer. Generate ONE mobile AppDemo component (max-w-[430px], 9:16 feel) that directly reflects the brief below.
@@ -255,9 +270,11 @@ BRIEF:
 ${refinedBrief}
 `.trim();
 
-    const text = await callGeminiProxy("gemini-3-pro-preview", [
-      { parts: [{ text: systemPrompt }] },
-    ]);
+    const text = await withTimeout(
+      callGeminiProxy("gemini-3-pro-preview", [{ parts: [{ text: systemPrompt }] }]),
+      PROTOTYPE_TIMEOUT_MS,
+      "generatePrototypeFromBrief"
+    );
 
     let code = extractPureCode(text);
     if (!code) {
@@ -272,7 +289,7 @@ ${refinedBrief}
       theme: { primary: "#6366f1", secondary: "#10b981", font: "Inter" },
     };
   } catch (err) {
-    console.error("[LaunchPad] generatePrototypeFromBrief failed, using local template:", err);
+    console.warn("[LaunchPad] generatePrototypeFromBrief failed, using local template:", err);
     return buildLocalPrototype(refinedBrief);
   }
 };
