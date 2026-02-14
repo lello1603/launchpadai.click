@@ -139,11 +139,19 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [currentStep]);
 
+  const GATE_CHECK_TIMEOUT_MS = 8000;
+
   const checkGateOpen = async (): Promise<boolean> => {
     if (isSuperUser) return true;
     if (!userState.id) return false;
     try {
-      const profile = await fetchUserProfile(userState.id);
+      const profilePromise = fetchUserProfile(userState.id);
+      const profile = await Promise.race([
+        profilePromise,
+        new Promise<null>((_, reject) =>
+          setTimeout(() => reject(new Error('gate_check_timeout')), GATE_CHECK_TIMEOUT_MS)
+        ),
+      ]);
       if (!profile) return true;
       const hasCredit = profile.isSubscribed || profile.generationCount < 1;
       setUserState(prev => ({
@@ -153,7 +161,9 @@ const App: React.FC = () => {
         subscriptionExpiry: profile.subscriptionExpiry
       }));
       return hasCredit;
-    } catch { return true; }
+    } catch {
+      return true;
+    }
   };
 
   const handleStartGeneration = async (img: string | null) => {
@@ -164,16 +174,22 @@ const App: React.FC = () => {
       return;
     }
     setIsProcessing(true);
-    const canProceed = await checkGateOpen();
+    setCurrentStep(AppStep.GENERATING);
+    let canProceed: boolean;
+    try {
+      canProceed = await checkGateOpen();
+    } catch {
+      canProceed = true;
+    }
     if (!canProceed) {
       setIsProcessing(false);
+      setCurrentStep(AppStep.UPLOAD);
       setShowPaywall(true);
       return;
     }
     complexityTimerRef.current = setTimeout(() => {
       setShowComplexityPopup(true);
-    }, 120000); 
-    setCurrentStep(AppStep.GENERATING);
+    }, 120000);
     try {
       const brief = await refineProjectBrief(quizData!, img);
       setGeneratedBrief(brief);
@@ -183,8 +199,8 @@ const App: React.FC = () => {
     } catch (err: any) {
       setGenerationError(err.message);
       setCurrentStep(AppStep.REPAIRING);
-    } finally { 
-      setIsProcessing(false); 
+    } finally {
+      setIsProcessing(false);
       setIsBackgroundMode(false);
       clearTimeout(complexityTimerRef.current);
     }
