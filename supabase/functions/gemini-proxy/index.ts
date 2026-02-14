@@ -5,22 +5,39 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
 
+const corsHeaders: HeadersInit = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey",
+};
+
+const jsonResponse = (body: any, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+      ...corsHeaders,
+    },
+  });
+
 Deno.serve(async (req) => {
-  // Only allow POST
-  if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), {
-      status: 405,
-      headers: { "Content-Type": "application/json" },
+  // Handle CORS preflight
+  if (req.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: corsHeaders,
     });
+  }
+
+  // Only allow POST for actual work
+  if (req.method !== "POST") {
+    return jsonResponse({ error: "Method not allowed" }, 405);
   }
 
   const apiKey = Deno.env.get("GEMINI_API_KEY");
   if (!apiKey) {
     console.error("GEMINI_API_KEY is not set in Supabase Edge Function secrets");
-    return new Response(
-      JSON.stringify({ error: "Server misconfigured: API key missing" }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
+    return jsonResponse({ error: "Server misconfigured: API key missing" }, 500);
   }
 
   try {
@@ -31,10 +48,7 @@ Deno.serve(async (req) => {
     };
 
     if (!model || !contents || !Array.isArray(contents)) {
-      return new Response(
-        JSON.stringify({ error: "Missing model or contents" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
+      return jsonResponse({ error: "Missing model or contents" }, 400);
     }
 
     // Convert camelCase (JS) to snake_case (Gemini REST API)
@@ -65,22 +79,13 @@ Deno.serve(async (req) => {
 
     if (!geminiRes.ok) {
       const msg = data?.error?.message || geminiRes.statusText || "Gemini API error";
-      return new Response(
-        JSON.stringify({ error: msg }),
-        { status: geminiRes.status, headers: { "Content-Type": "application/json" } }
-      );
+      return jsonResponse({ error: msg }, geminiRes.status);
     }
 
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-    return new Response(JSON.stringify({ text }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonResponse({ text }, 200);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    return new Response(
-      JSON.stringify({ error: message }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
+    return jsonResponse({ error: message }, 500);
   }
 });

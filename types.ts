@@ -2,6 +2,7 @@ export interface StartupQuiz {
   valueProposition: string;
   targetAudience: string;
   essentialFeatures: string;
+  appFeel: string;
   businessGoal: string;
 }
 

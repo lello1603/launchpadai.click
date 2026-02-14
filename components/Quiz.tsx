@@ -1,9 +1,16 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 // Fix: Use any cast for motion to bypass broken type definitions in the environment
 import { motion as m, AnimatePresence } from 'framer-motion';
 const motion = m as any;
 import { StartupQuiz } from '../types';
+
+const FEEL_PLACEHOLDERS = [
+  "e.g., Make my app look funny but still professional…",
+  "e.g., Minimal and calm, like a meditation app…",
+  "e.g., Bold and playful, Gen Z energy…",
+  "e.g., Premium and sleek, like a fintech product…",
+  "e.g., Warm and friendly, like a community app…",
+];
 
 interface Props {
   onComplete: (data: StartupQuiz) => void;
@@ -11,18 +18,28 @@ interface Props {
 
 const Quiz: React.FC<Props> = ({ onComplete }) => {
   const [step, setStep] = useState(1);
+  const [feelPlaceholderIndex, setFeelPlaceholderIndex] = useState(0);
   const [data, setData] = useState<StartupQuiz>({
     valueProposition: '',
     targetAudience: '',
     essentialFeatures: '',
+    appFeel: '',
     businessGoal: ''
   });
 
-  const totalSteps = 3;
+  const totalSteps = 4;
+
+  useEffect(() => {
+    if (step !== 4) return;
+    const interval = setInterval(() => {
+      setFeelPlaceholderIndex((i) => (i + 1) % FEEL_PLACEHOLDERS.length);
+    }, 3500);
+    return () => clearInterval(interval);
+  }, [step]);
 
   const handleNext = () => {
     if (step < totalSteps) setStep(step + 1);
-    else onComplete({ ...data, businessGoal: 'flex on socials' }); // Simple default goal for this theme
+    else onComplete({ ...data, businessGoal: 'flex on socials' });
   };
 
   const handleBack = () => {
@@ -85,6 +102,24 @@ const Quiz: React.FC<Props> = ({ onComplete }) => {
             />
           </motion.div>
         );
+      case 4:
+        return (
+          <motion.div initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="space-y-6">
+            <label htmlFor="quiz-app-feel" className="block text-3xl font-black neon-cyan">
+              How should the app feel? 🎨
+            </label>
+            <p className="text-slate-400 font-medium">Vibe, tone, and visual style in one line.</p>
+            <textarea 
+              autoFocus
+              id="quiz-app-feel"
+              name="appFeel"
+              className="w-full p-6 bg-white/5 border border-white/10 rounded-[2rem] text-white focus:ring-2 focus:ring-[#ff0050] focus:border-transparent outline-none h-40 text-xl font-bold"
+              placeholder={FEEL_PLACEHOLDERS[feelPlaceholderIndex]}
+              value={data.appFeel}
+              onChange={(e) => setData({ ...data, appFeel: e.target.value })}
+            />
+          </motion.div>
+        );
       default: return null;
     }
   };
@@ -94,7 +129,7 @@ const Quiz: React.FC<Props> = ({ onComplete }) => {
       <div className="mb-16 text-center">
         <h2 className="text-4xl font-black mb-4">Tell us the vibe. ✌️</h2>
         <div className="flex justify-center items-center gap-3">
-          {[1, 2, 3].map(i => (
+          {[1, 2, 3, 4].map(i => (
             <div key={i} className={`h-2 w-12 rounded-full transition-all duration-500 ${step >= i ? 'bg-[#ff0050]' : 'bg-white/10'}`} />
           ))}
         </div>
@@ -114,7 +149,12 @@ const Quiz: React.FC<Props> = ({ onComplete }) => {
           </button>
           <button 
             onClick={handleNext}
-            disabled={step === 1 ? !data.valueProposition : step === 2 ? !data.targetAudience : !data.essentialFeatures}
+            disabled={
+              step === 1 ? !data.valueProposition.trim() :
+              step === 2 ? !data.targetAudience.trim() :
+              step === 3 ? !data.essentialFeatures.trim() :
+              !data.appFeel.trim()
+            }
             className="px-12 py-4 neon-pink text-white rounded-2xl font-black text-lg hover:scale-105 transition-all disabled:opacity-20 disabled:grayscale disabled:cursor-not-allowed"
           >
             {step === totalSteps ? 'Cooking Time 👨‍🍳' : 'Next Question'}

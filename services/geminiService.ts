@@ -17,14 +17,15 @@ ${quiz.targetAudience || "Early adopters and indie builders who love bold UI."}
 ESSENTIAL FEATURE:
 ${quiz.essentialFeatures || "A single hero interaction that feels premium and animated."}
 
+APP FEEL / VIBE (tone, style, mood):
+${quiz.appFeel || "Professional but approachable; clean and modern."}
+
 VISUAL NOTES:
-- High‑contrast dashboard with soft cards and subtle gradients.
-- Mobile‑first, 9:16 layout inspired by creator dashboards.
+- Mobile‑first, 9:16 layout. Soft cards, clear hierarchy.
 - ${imgNote}
 
 TECHNICAL NOTES:
-- Use a clear primary action at the top.
-- Use fake data, but keep copy specific and fun.
+- Use a clear primary action at the top. Fake data must match the value proposition and audience.
 --- END BRIEF ---
 `.trim();
 };
@@ -204,7 +205,13 @@ export const refineProjectBrief = async (
   // Try Gemini for a richer brief, fall back silently to local if it fails
   try {
     const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [
-      { text: `ROLE: Lead product strategist. Turn this into a sharp, structured brief.\n\n${localBrief}` },
+      {
+        text: `ROLE: Lead product strategist.
+TASK: Rewrite the following into a single, sharp NOMADGATE VISUAL DNA BRIEF. Keep the exact structure below and preserve all user answers. Enrich only where it helps clarity. Output MUST include clear sections: VALUE PROPOSITION, TARGET AUDIENCE, ESSENTIAL FEATURE, APP FEEL/VIBE, and short VISUAL/TECHNICAL NOTES. Do not drop or rename any section.
+
+USER INPUT:
+${localBrief}`,
+      },
     ];
 
     if (imageData) {
@@ -227,10 +234,16 @@ export const generatePrototypeFromBrief = async (
   // Try Gemini first, fall back to local template if anything goes wrong.
   try {
     const systemPrompt = `
-You are a senior React + Tailwind engineer.
-Generate a single high-fidelity mobile AppDemo component for the following brief.
-Return ONLY JSX for AppDemo, no imports, no exports.
-Brief:
+You are a senior React + Tailwind engineer. Generate ONE mobile AppDemo component (max-w-[430px], 9:16 feel) that directly reflects the brief below.
+
+RULES:
+1. Use the brief's VALUE PROPOSITION as the app's main purpose and headline/copy.
+2. Use TARGET AUDIENCE to choose tone and sample data (e.g. Gen Z → casual copy; B2B → professional).
+3. Use ESSENTIAL FEATURE to drive the main UI (e.g. "dark dashboard" → dark theme; "neon animations" → motion).
+4. Use APP FEEL / VIBE to set colors, typography, and mood (e.g. "funny but professional" → playful copy + clean layout; "minimal and calm" → soft colors, lots of whitespace).
+5. Return ONLY the AppDemo function body as raw JSX. No import/export statements. Use React, Tailwind classes, and optional Framer Motion. No lorem ipsum; all copy must come from or clearly reflect the brief.
+
+BRIEF:
 ${refinedBrief}
 `.trim();
 
