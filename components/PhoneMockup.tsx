@@ -4,9 +4,13 @@ import React, { useEffect, useState, useMemo } from 'react';
 interface Props {
   code: string;
   isSubscribed?: boolean;
+  /** When false, iframe is not clickable (preview-only). */
+  interactive?: boolean;
+  /** When true, show blur overlay and "Subscribe to unlock" style. */
+  locked?: boolean;
 }
 
-const PhoneMockup: React.FC<Props> = ({ code, isSubscribed = false }) => {
+const PhoneMockup: React.FC<Props> = ({ code, isSubscribed = false, interactive = true, locked = false }) => {
   const [iframeSrc, setIframeSrc] = useState('');
 
   const template = useMemo(() => {
@@ -136,7 +140,21 @@ const PhoneMockup: React.FC<Props> = ({ code, isSubscribed = false }) => {
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-7 bg-[#121212] rounded-b-[1.2rem] z-50 flex items-center justify-center">
            <div className="w-10 h-1 bg-[#222] rounded-full"></div>
         </div>
-        <iframe key={code.length} src={iframeSrc} className="w-full h-full border-none" sandbox="allow-scripts allow-same-origin" />
+        <iframe
+          key={code.length}
+          src={iframeSrc}
+          className={`w-full h-full border-none ${!interactive ? 'pointer-events-none' : ''}`}
+          sandbox="allow-scripts allow-same-origin"
+          title="App preview"
+        />
+        {locked && (
+          <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/60 backdrop-blur-md rounded-[2.5rem] p-6 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-3xl mb-4">👑</div>
+            <p className="text-white font-black text-sm uppercase tracking-widest mb-2">AI‑enhanced preview</p>
+            <p className="text-slate-300 text-xs font-medium mb-4">Subscribe to unlock full AI version, prompt & code</p>
+            <p className="text-indigo-300 text-[10px] font-bold uppercase tracking-widest">$4.99 / month</p>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -140,8 +140,20 @@ const App: React.FC = () => {
   }, [currentStep]);
 
   const checkGateOpen = async (): Promise<boolean> => {
-    // TEMP: allow all generations while we debug + wire billing
-    return true;
+    if (isSuperUser) return true;
+    if (!userState.id) return false;
+    try {
+      const profile = await fetchUserProfile(userState.id);
+      if (!profile) return true;
+      const hasCredit = profile.isSubscribed || profile.generationCount < 1;
+      setUserState(prev => ({
+        ...prev,
+        generationCount: profile.generationCount,
+        isSubscribed: profile.isSubscribed,
+        subscriptionExpiry: profile.subscriptionExpiry
+      }));
+      return hasCredit;
+    } catch { return true; }
   };
 
   const handleStartGeneration = async (img: string | null) => {
@@ -501,6 +513,7 @@ const App: React.FC = () => {
             <Dashboard 
               prompt={generatedBrief} 
               prototypeCode={prototypeData.code} 
+              premiumCode={prototypeData.code}
               isSubscribed={userState.isSubscribed || isSuperUser} 
               onUnlock={() => setShowPaywall(true)} 
               onModify={handleModify}

@@ -2,12 +2,19 @@
 import { StartupQuiz, PrototypeData } from "../types";
 import { supabase } from "./supabaseService";
 
+/** Remove internal branding so users only see their own idea and prototype. */
+const sanitizeBriefForUser = (text: string): string =>
+  text
+    .replace(/\bNomadGate\b/gi, "Your prototype")
+    .replace(/\bNOMADGATE[^\n\-]*/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
 // --- Fallback: fast local template used when Gemini fails or is unavailable ---
 const buildLocalBrief = (quiz: StartupQuiz, imageData: string | null): string => {
   const imgNote = imageData ? "User provided a visual moodboard reference." : "No image reference was provided.";
-
-  return `
---- NOMADGATE VISUAL DNA BRIEF ---
+  const brief = `
+--- YOUR PROTOTYPE BRIEF ---
 VALUE PROPOSITION:
 ${quiz.valueProposition || "A playful experimental app prototype."}
 
@@ -28,11 +35,12 @@ TECHNICAL NOTES:
 - Use a clear primary action at the top. Fake data must match the value proposition and audience.
 --- END BRIEF ---
 `.trim();
+  return sanitizeBriefForUser(brief);
 };
 
 const buildLocalPrototype = (refinedBrief: string): PrototypeData => {
   return {
-    title: "NomadGate Prototype",
+    title: "Your Prototype",
     code: `
 function AppDemo() {
   const brief = \`${refinedBrief.replace(/`/g, "\\`")}\`;
@@ -48,8 +56,8 @@ function AppDemo() {
       <header className="bg-gradient-to-br from-indigo-600 to-indigo-800 h-64 pt-12 px-6 rounded-b-[3rem] relative shadow-lg text-white">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <p className="text-xs font-semibold tracking-[0.25em] uppercase text-indigo-200/80">NomadGate Standard</p>
-            <h1 className="text-3xl font-black tracking-tight mt-1">Signal Scanner</h1>
+            <p className="text-xs font-semibold tracking-[0.25em] uppercase text-indigo-200/80">Your idea</p>
+            <h1 className="text-3xl font-black tracking-tight mt-1">Your Prototype</h1>
           </div>
           <div className="w-11 h-11 rounded-2xl bg-white/10 border border-white/30 flex items-center justify-center text-lg shadow-lg">
             ⚡
@@ -207,7 +215,7 @@ export const refineProjectBrief = async (
     const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [
       {
         text: `ROLE: Lead product strategist.
-TASK: Rewrite the following into a single, sharp NOMADGATE VISUAL DNA BRIEF. Keep the exact structure below and preserve all user answers. Enrich only where it helps clarity. Output MUST include clear sections: VALUE PROPOSITION, TARGET AUDIENCE, ESSENTIAL FEATURE, APP FEEL/VIBE, and short VISUAL/TECHNICAL NOTES. Do not drop or rename any section.
+TASK: Rewrite the following into a single, sharp YOUR PROTOTYPE BRIEF. Keep the exact structure below and preserve all user answers. Do not use the word NomadGate anywhere. Enrich only where it helps clarity. Output MUST include clear sections: VALUE PROPOSITION, TARGET AUDIENCE, ESSENTIAL FEATURE, APP FEEL/VIBE, and short VISUAL/TECHNICAL NOTES. Do not drop or rename any section.
 
 USER INPUT:
 ${localBrief}`,
@@ -221,7 +229,7 @@ ${localBrief}`,
 
     const text = await callGeminiProxy("gemini-3-flash-preview", [{ parts }]);
     if (!text) return localBrief;
-    return text.trim();
+    return sanitizeBriefForUser(text.trim());
   } catch (err) {
     console.error("[LaunchPad] refineProjectBrief fell back to local brief:", err);
     return localBrief;
@@ -241,7 +249,7 @@ RULES:
 2. Use TARGET AUDIENCE to choose tone and sample data (e.g. Gen Z → casual copy; B2B → professional).
 3. Use ESSENTIAL FEATURE to drive the main UI (e.g. "dark dashboard" → dark theme; "neon animations" → motion).
 4. Use APP FEEL / VIBE to set colors, typography, and mood (e.g. "funny but professional" → playful copy + clean layout; "minimal and calm" → soft colors, lots of whitespace).
-5. Return ONLY the AppDemo function body as raw JSX. No import/export statements. Use React, Tailwind classes, and optional Framer Motion. No lorem ipsum; all copy must come from or clearly reflect the brief.
+5. Return ONLY the AppDemo function body as raw JSX. No import/export statements. Use React, Tailwind classes, and optional Framer Motion. No lorem ipsum; all copy must come from or clearly reflect the brief. Do not use the word NomadGate anywhere in the UI or code.
 
 BRIEF:
 ${refinedBrief}
@@ -251,14 +259,15 @@ ${refinedBrief}
       { parts: [{ text: systemPrompt }] },
     ]);
 
-    const code = extractPureCode(text);
+    let code = extractPureCode(text);
     if (!code) {
       console.warn("[LaunchPad] Gemini returned empty code, using local template.");
       return buildLocalPrototype(refinedBrief);
     }
+    code = code.replace(/\bNomadGate\b/gi, "Your prototype");
 
     return {
-      title: "NomadGate Prototype",
+      title: "Your Prototype",
       code,
       theme: { primary: "#6366f1", secondary: "#10b981", font: "Inter" },
     };
