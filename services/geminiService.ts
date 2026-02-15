@@ -19,7 +19,25 @@ const withTimeout = <T>(promise: Promise<T>, ms: number, label: string): Promise
     ),
   ]);
 
-// --- Fallback: fast local template used when Gemini fails or is unavailable ---
+/** Parse brief text into structured fields for dynamic templates. */
+const parseBrief = (brief: string): { valueProposition: string; targetAudience: string; essentialFeature: string; appFeel: string } => {
+  const getSection = (key: string): string => {
+    const re = new RegExp(`${key}:\\s*([\\s\\S]*?)(?=\\n\\n[A-Z]|\\n---|$)`, "i");
+    const m = brief.match(re);
+    return (m ? m[1].trim() : "") || "";
+  };
+  return {
+    valueProposition: getSection("VALUE PROPOSITION") || "Your idea",
+    targetAudience: getSection("TARGET AUDIENCE") || "Your audience",
+    essentialFeature: getSection("ESSENTIAL FEATURE") || "Key feature",
+    appFeel: getSection("APP FEEL") || getSection("VIBE") || "Clean and modern",
+  };
+};
+
+const escapeForJs = (s: string): string =>
+  s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/`/g, "\\`").replace(/\$/g, "\\$").replace(/\n/g, "\\n");
+
+// --- Fallback: dynamic local template built from quiz/brief (used when Gemini fails or is unavailable) ---
 const buildLocalBrief = (quiz: StartupQuiz, imageData: string | null): string => {
   const imgNote = imageData ? "User provided a visual moodboard reference." : "No image reference was provided.";
   const brief = `
@@ -48,16 +66,33 @@ TECHNICAL NOTES:
 };
 
 const buildLocalPrototype = (refinedBrief: string): PrototypeData => {
+  const p = parseBrief(refinedBrief);
+  const vp = p.valueProposition.slice(0, 80) + (p.valueProposition.length > 80 ? "…" : "");
+  const audience = p.targetAudience.slice(0, 60) + (p.targetAudience.length > 60 ? "…" : "");
+  const feature = p.essentialFeature.slice(0, 100) + (p.essentialFeature.length > 100 ? "…" : "");
+  const feel = p.appFeel.slice(0, 50) + (p.appFeel.length > 50 ? "…" : "");
+  const headline = vp || "Your idea";
+  const subtitle = audience || "Built for you";
+  const featureLabel = feature || "Key feature";
+  const cardTitles = [
+    headline.split(/[.!?]/)[0]?.trim() || "Main benefit",
+    feature.split(/[.!?]/)[0]?.trim() || "Feature one",
+    audience.split(/[.!?]/)[0]?.trim() || "For you",
+  ].slice(0, 3);
+  const safe = (s: string) => escapeForJs(s.replace(/[\r\n]+/g, " ").trim());
+
   return {
-    title: "Your Prototype",
+    title: headline.slice(0, 50) || "Your Prototype",
     code: `
 function AppDemo() {
-  const brief = \`${refinedBrief.replace(/`/g, "\\`")}\`;
-
-  const fakeDeals = [
-    { title: "Signal Scout Dashboard", badge: "HOT ROUTE", price: "$24 / mo", desc: "Live feed of high‑intent signals from your niche." },
-    { title: "Creator Radar Screen", badge: "SOCIAL PROOF", price: "$39 / mo", desc: "Tracks who is talking about your brand in real time." },
-    { title: "Deal Flow Inbox", badge: "ARBITRAGE", price: "Beta", desc: "Auto‑groups leads into qualified, warm, and cold lanes." },
+  const headline = "${safe(headline)}";
+  const subtitle = "${safe(subtitle)}";
+  const featureLabel = "${safe(featureLabel)}";
+  const vibe = "${safe(feel)}";
+  const cards = [
+    { title: "${safe(cardTitles[0])}", desc: "${safe(p.valueProposition.slice(0, 90))}", emoji: "✨" },
+    { title: "${safe(cardTitles[1])}", desc: "${safe(p.essentialFeature.slice(0, 90))}", emoji: "🎯" },
+    { title: "${safe(cardTitles[2])}", desc: "${safe(p.targetAudience.slice(0, 90))}", emoji: "👥" },
   ];
 
   return (
@@ -66,23 +101,19 @@ function AppDemo() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <p className="text-xs font-semibold tracking-[0.25em] uppercase text-indigo-200/80">Your idea</p>
-            <h1 className="text-3xl font-black tracking-tight mt-1">Your Prototype</h1>
+            <h1 className="text-2xl md:text-3xl font-black tracking-tight mt-1 leading-tight">{headline}</h1>
           </div>
           <div className="w-11 h-11 rounded-2xl bg-white/10 border border-white/30 flex items-center justify-center text-lg shadow-lg">
             ⚡
           </div>
         </div>
-        <p className="text-sm text-indigo-100/90 leading-relaxed max-w-xs">
-          Paste a hunch, press scan, and watch us surface the spiciest opportunities hiding in your idea.
-        </p>
+        <p className="text-sm text-indigo-100/90 leading-relaxed max-w-xs">{subtitle}</p>
         <div className="absolute -bottom-10 left-0 right-0 px-6">
           <div className="bg-white text-slate-900 rounded-2xl shadow-xl p-3 flex items-center gap-3 text-xs">
             <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white text-lg">🧬</div>
-            <div className="flex-1">
-              <p className="font-semibold uppercase tracking-[0.2em] text-[10px] text-slate-500">Brief Snapshot</p>
-              <p className="text-[11px] line-clamp-2 text-slate-700">
-                {brief.split("\\n").find(line => line.toLowerCase().includes("value")) || "High‑signal prototype generated from your idea."}
-              </p>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold uppercase tracking-[0.2em] text-[10px] text-slate-500">Vibe</p>
+              <p className="text-[11px] line-clamp-2 text-slate-700">{vibe}</p>
             </div>
           </div>
         </div>
@@ -90,40 +121,20 @@ function AppDemo() {
 
       <main className="px-6 mt-16 space-y-8">
         <section className="bg-white rounded-3xl shadow-sm p-5 border border-slate-100">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-black uppercase tracking-[0.2em] text-slate-500">Input Stream</h2>
-            <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-100">
-              LIVE
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 mb-3">
-            This is the exact text we wired your generator around. Flip it later, keep the engine.
-          </p>
-          <div className="bg-slate-50 rounded-2xl border border-slate-100 p-3 max-h-28 overflow-auto text-[11px] text-slate-700 whitespace-pre-wrap">
-            {brief}
-          </div>
+          <h2 className="text-sm font-black uppercase tracking-[0.2em] text-slate-500 mb-3">The idea</h2>
+          <p className="text-sm text-slate-700 leading-relaxed">{headline}</p>
+          <p className="text-xs text-slate-500 mt-2">For: {subtitle}</p>
         </section>
 
         <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-black uppercase tracking-[0.18em] text-slate-600">Scan Results</h3>
-            <span className="text-[10px] font-semibold text-indigo-500 uppercase tracking-[0.18em]">3 SURFACING</span>
-          </div>
+          <h3 className="text-sm font-black uppercase tracking-[0.18em] text-slate-600">{featureLabel}</h3>
           <div className="space-y-3">
-            {fakeDeals.map((deal, index) => (
-              <div key={deal.title} className="bg-white rounded-2xl border border-slate-100 shadow-[0_10px_30px_rgba(15,23,42,0.05)] p-4 flex items-start gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center text-lg">
-                  {index === 0 ? "📡" : index === 1 ? "👁️" : "📥"}
-                </div>
+            {cards.map((card, index) => (
+              <div key={index} className="bg-white rounded-2xl border border-slate-100 shadow-[0_10px_30px_rgba(15,23,42,0.05)] p-4 flex items-start gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center text-lg">{card.emoji}</div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <p className="font-semibold text-sm text-slate-900 truncate">{deal.title}</p>
-                    <span className="ml-3 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-[0.18em] bg-indigo-50 text-indigo-600 border border-indigo-100">
-                      {deal.badge}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-500 mb-2 line-clamp-2">{deal.desc}</p>
-                  <p className="text-[11px] font-semibold text-slate-900">{deal.price}</p>
+                  <p className="font-semibold text-sm text-slate-900 truncate">{card.title}</p>
+                  <p className="text-[11px] text-slate-500 mt-1 line-clamp-2">{card.desc}</p>
                 </div>
               </div>
             ))}
@@ -133,22 +144,10 @@ function AppDemo() {
 
       <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] px-6 pb-6">
         <div className="bg-white rounded-full shadow-[0_18px_40px_rgba(15,23,42,0.35)] border border-slate-100 px-5 py-3 flex items-center justify-between text-slate-500 text-xs">
-          <button className="flex flex-col items-center gap-1 text-indigo-600">
-            <span className="text-lg">🔍</span>
-            <span className="text-[9px] font-semibold tracking-[0.16em] uppercase">Scan</span>
-          </button>
-          <button className="flex flex-col items-center gap-1">
-            <span className="text-lg">📊</span>
-            <span className="text-[9px] font-semibold tracking-[0.16em] uppercase">Signals</span>
-          </button>
-          <button className="flex flex-col items-center gap-1">
-            <span className="text-lg">⭐</span>
-            <span className="text-[9px] font-semibold tracking-[0.16em] uppercase">Saved</span>
-          </button>
-          <button className="flex flex-col items-center gap-1">
-            <span className="text-lg">👤</span>
-            <span className="text-[9px] font-semibold tracking-[0.16em] uppercase">Profile</span>
-          </button>
+          <button className="flex flex-col items-center gap-1 text-indigo-600"><span className="text-lg">🔍</span><span className="text-[9px] font-semibold uppercase">Explore</span></button>
+          <button className="flex flex-col items-center gap-1"><span className="text-lg">📋</span><span className="text-[9px] font-semibold uppercase">Idea</span></button>
+          <button className="flex flex-col items-center gap-1"><span className="text-lg">⭐</span><span className="text-[9px] font-semibold uppercase">Saved</span></button>
+          <button className="flex flex-col items-center gap-1"><span className="text-lg">👤</span><span className="text-[9px] font-semibold uppercase">Profile</span></button>
         </div>
       </nav>
     </div>
@@ -257,14 +256,15 @@ export const generatePrototypeFromBrief = async (
 
   try {
     const systemPrompt = `
-You are a senior React + Tailwind engineer. Generate ONE mobile AppDemo component (max-w-[430px], 9:16 feel) that directly reflects the brief below.
+You are a senior React + Tailwind engineer. Generate ONE mobile AppDemo component (max-w-[430px], 9:16 feel) that is a direct prototype of the idea in the brief—not a generic template.
 
-RULES:
-1. Use the brief's VALUE PROPOSITION as the app's main purpose and headline/copy.
-2. Use TARGET AUDIENCE to choose tone and sample data (e.g. Gen Z → casual copy; B2B → professional).
-3. Use ESSENTIAL FEATURE to drive the main UI (e.g. "dark dashboard" → dark theme; "neon animations" → motion).
-4. Use APP FEEL / VIBE to set colors, typography, and mood (e.g. "funny but professional" → playful copy + clean layout; "minimal and calm" → soft colors, lots of whitespace).
-5. Return ONLY the AppDemo function body as raw JSX. No import/export statements. Use React, Tailwind classes, and optional Framer Motion. No lorem ipsum; all copy must come from or clearly reflect the brief. Do not use the word NomadGate anywhere in the UI or code.
+STRICT RULES:
+1. Main headline or hero text MUST be the brief's VALUE PROPOSITION (or a short punchy version of it). Do not use "Your Prototype" or "Signal Scanner" or generic titles.
+2. Subtitle or supporting copy MUST reflect TARGET AUDIENCE (who it's for) and/or ESSENTIAL FEATURE.
+3. The primary UI (cards, list, dashboard) MUST showcase the ESSENTIAL FEATURE—e.g. if the feature is "habit tracker", show habit-related items; if "recipe finder", show recipe cards. No placeholder labels like "Signal Scout" or "Deal Flow" unless the brief is about signals/deals.
+4. Colors, typography, and mood MUST follow APP FEEL / VIBE (e.g. "playful" → rounded, bright; "minimal" → lots of whitespace; "dark" → dark theme).
+5. Every visible string in the UI must come from the brief sections above—no lorem ipsum, no generic "Your idea" or "Feature one". Extract real phrases from VALUE PROPOSITION, TARGET AUDIENCE, ESSENTIAL FEATURE, and APP FEEL.
+6. Return ONLY the AppDemo function body as raw JSX. No import/export. Use React, Tailwind, optional Framer Motion. Do not use the word NomadGate anywhere.
 
 BRIEF:
 ${refinedBrief}
@@ -283,8 +283,11 @@ ${refinedBrief}
     }
     code = code.replace(/\bNomadGate\b/gi, "Your prototype");
 
+    const parsed = parseBrief(refinedBrief);
+    const title = parsed.valueProposition.slice(0, 50) || "Your Prototype";
+
     return {
-      title: "Your Prototype",
+      title,
       code,
       theme: { primary: "#6366f1", secondary: "#10b981", font: "Inter" },
     };

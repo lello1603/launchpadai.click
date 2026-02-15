@@ -7,8 +7,6 @@ import PhoneMockup from './PhoneMockup';
 interface Props {
   prompt: string;
   prototypeCode: string;
-  /** AI‑enhanced version shown as non‑interactable preview; locked until subscribed. */
-  premiumCode?: string;
   isSubscribed: boolean;
   onUnlock: () => void;
   onModify?: (request: string) => Promise<void>;
@@ -16,8 +14,7 @@ interface Props {
   isModifying?: boolean;
 }
 
-const Dashboard: React.FC<Props> = ({ prompt, prototypeCode, premiumCode, isSubscribed, onUnlock, onModify, onRepair, isModifying }) => {
-  const premiumPreviewCode = premiumCode ?? prototypeCode;
+const Dashboard: React.FC<Props> = ({ prompt, prototypeCode, isSubscribed, onUnlock, onModify, onRepair, isModifying }) => {
   const [activeTab, setActiveTab] = useState<'flex' | 'logic' | 'code'>('flex');
   const [currentCode, setCurrentCode] = useState(prototypeCode);
   const [copySuccess, setCopySuccess] = useState(false);
@@ -138,7 +135,7 @@ const Dashboard: React.FC<Props> = ({ prompt, prototypeCode, premiumCode, isSubs
                   )}
                   
                   <p className="text-slate-400 text-xl font-medium leading-relaxed max-w-2xl">
-                    Play with your app below and share it on social to see if people care about your idea. Unlock the AI‑enhanced version, prompt, and source code with a $4.99/mo subscription.
+                    Play with your app below and share it on social. Unlock Strategy DNA, Source code, and full Vault access with a $4.99/mo subscription.
                   </p>
                 </motion.div>
               )}
@@ -158,8 +155,8 @@ const Dashboard: React.FC<Props> = ({ prompt, prototypeCode, premiumCode, isSubs
                       <div className="w-24 h-24 bg-indigo-500/10 rounded-[2.5rem] flex items-center justify-center mb-10 border border-white/10 shadow-[0_0_60px_rgba(99,102,241,0.2)]">
                         <span className="text-5xl">👑</span>
                       </div>
-                      <h3 className="text-4xl font-black mb-6 tracking-tighter uppercase">Unlock prompt & code</h3>
-                      <p className="text-slate-400 text-sm font-medium mb-6">Get full access to your strategy brief and source code. $4.99/mo.</p>
+                      <h3 className="text-4xl font-black mb-6 tracking-tighter uppercase">Unlock everything</h3>
+                      <p className="text-slate-400 text-sm font-medium mb-6">Strategy DNA, Source code & full Vault access. $4.99/mo.</p>
                       <button onClick={onUnlock} className="px-14 py-7 bg-white text-black rounded-[2rem] font-black text-2xl hover:scale-105 transition-all shadow-[0_0_80px_rgba(255,255,255,0.3)]">Subscribe for $4.99/mo 🚀</button>
                     </div>
                   )}
@@ -169,19 +166,10 @@ const Dashboard: React.FC<Props> = ({ prompt, prototypeCode, premiumCode, isSubs
           </div>
         </div>
 
-        <div className="w-full lg:max-w-[480px] flex flex-col sm:flex-row lg:flex-col gap-8 justify-center items-center order-1 lg:order-2 lg:sticky lg:top-16">
+        <div className="w-full lg:max-w-[480px] flex flex-col justify-center items-center order-1 lg:order-2 lg:sticky lg:top-16">
           <div className="flex flex-col items-center gap-2">
-            <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400/90">Free — try it now</p>
+            <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400/90">Live preview</p>
             <PhoneMockup code={currentCode} isSubscribed={true} interactive={true} locked={false} />
-          </div>
-          <div className="flex flex-col items-center gap-2 relative">
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">AI‑enhanced preview</p>
-            <PhoneMockup
-              code={premiumPreviewCode}
-              isSubscribed={isSubscribed}
-              interactive={false}
-              locked={!isSubscribed}
-            />
           </div>
         </div>
       </div>

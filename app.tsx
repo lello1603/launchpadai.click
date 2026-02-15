@@ -313,6 +313,11 @@ const App: React.FC = () => {
     return success;
   };
 
+  const goToVault = () => {
+    if (userState.isSubscribed || isSuperUser) setCurrentStep(AppStep.VAULT);
+    else setShowPaywall(true);
+  };
+
   const handleLogout = async () => {
     try {
       await auth.signOut();
@@ -399,7 +404,7 @@ const App: React.FC = () => {
               <p className="text-white font-black text-sm">"{readyToast}" is ready to launch.</p>
             </div>
             <button 
-              onClick={() => { setReadyToast(null); setCurrentStep(AppStep.VAULT); }}
+              onClick={() => { setReadyToast(null); goToVault(); }}
               className="ml-4 px-6 py-2.5 bg-white text-black rounded-xl text-[10px] font-black uppercase tracking-widest hover:scale-105 active:scale-95 transition-all"
             >
               Open Vault
@@ -451,7 +456,7 @@ const App: React.FC = () => {
         <div className="flex items-center gap-4">
           {userState.id ? (
             <div className="flex items-center gap-4 relative" ref={menuRef}>
-              <button onClick={() => setCurrentStep(AppStep.VAULT)} className={`text-[10px] font-black uppercase text-slate-500 hover:text-white transition-colors ${currentStep === AppStep.VAULT ? 'text-white underline decoration-indigo-500 underline-offset-8' : ''}`}>Vault</button>
+              <button onClick={goToVault} className={`text-[10px] font-black uppercase text-slate-500 hover:text-white transition-colors ${currentStep === AppStep.VAULT ? 'text-white underline decoration-indigo-500 underline-offset-8' : ''}`}>Vault</button>
               <div 
                 className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center font-black border-2 border-indigo-400 cursor-pointer transition-transform hover:scale-110" 
                 onClick={() => setShowUserMenu(!showUserMenu)}
@@ -552,7 +557,6 @@ const App: React.FC = () => {
             <Dashboard 
               prompt={generatedBrief} 
               prototypeCode={prototypeData.code} 
-              premiumCode={prototypeData.code}
               isSubscribed={userState.isSubscribed || isSuperUser} 
               onUnlock={() => setShowPaywall(true)} 
               onModify={handleModify}
