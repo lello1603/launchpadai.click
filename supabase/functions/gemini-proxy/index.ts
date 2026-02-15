@@ -66,14 +66,18 @@ Deno.serve(async (req) => {
     }));
 
     const url = `${GEMINI_BASE}/models/${model}:generateContent`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 85_000);
     const geminiRes = await fetch(url, {
       method: "POST",
+      signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
         "x-goog-api-key": apiKey,
       },
       body: JSON.stringify({ contents: normalizedContents }),
     });
+    clearTimeout(timeoutId);
 
     const data = await geminiRes.json();
 

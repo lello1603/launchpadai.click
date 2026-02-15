@@ -2,6 +2,9 @@
 import { StartupQuiz, PrototypeData } from "../types";
 import { supabase } from "./supabaseService";
 
+/** Gemini models: use gemini-1.5-flash / gemini-1.5-pro for reliability. If your API only has 3.x, set to gemini-3-flash-preview / gemini-3-pro-preview. */
+const MODELS = { BRIEF: "gemini-1.5-flash", PROTOTYPE: "gemini-1.5-pro" } as const;
+
 /** Remove internal branding so users only see their own idea and prototype. */
 const sanitizeBriefForUser = (text: string): string =>
   text
@@ -18,6 +21,16 @@ const withTimeout = <T>(promise: Promise<T>, ms: number, label: string): Promise
       setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
     ),
   ]);
+
+/** Call fn, on failure retry once (for transient timeouts/network). */
+const withRetry = async <T>(fn: () => Promise<T>, label: string): Promise<T> => {
+  try {
+    return await fn();
+  } catch (first) {
+    console.warn(`[LaunchPad] ${label} failed, retrying once:`, first);
+    return await fn();
+  }
+};
 
 /** Parse brief text into structured fields for dynamic templates. */
 const parseBrief = (brief: string): { valueProposition: string; targetAudience: string; essentialFeature: string; appFeel: string } => {
@@ -218,7 +231,7 @@ export const refineProjectBrief = async (
 ): Promise<string> => {
   const localBrief = buildLocalBrief(quiz, imageData);
 
-  const BRIEF_TIMEOUT_MS = 14_000;
+  const BRIEF_TIMEOUT_MS = 22_000;
 
   try {
     const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [
@@ -236,9 +249,12 @@ ${localBrief}`,
       parts.push({ inlineData: { mimeType: "image/jpeg", data: base64Data } });
     }
 
-    const text = await withTimeout(
-      callGeminiProxy("gemini-3-flash-preview", [{ parts }]),
-      BRIEF_TIMEOUT_MS,
+    const text = await withRetry(
+      () => withTimeout(
+        callGeminiProxy(MODELS.BRIEF, [{ parts }]),
+        BRIEF_TIMEOUT_MS,
+        "refineProjectBrief"
+      ),
       "refineProjectBrief"
     );
     if (!text) return localBrief;
@@ -249,30 +265,53 @@ ${localBrief}`,
   }
 };
 
-export const generatePrototypeFromBrief = async (
-  refinedBrief: string
-): Promise<PrototypeData> => {
-  const PROTOTYPE_TIMEOUT_MS = 28_000;
+/** Detect if generated code looks like the generic fallback template (same structure, generic labels). */
+const looksLikeTemplate = (code: string): boolean => {
+  const lower = code.toLowerCase();
+  return (
+    (lower.includes("your idea") && lower.includes("vibe") && lower.includes("the idea")) ||
+    (lower.includes("brief snapshot") && lower.includes("signal scout"))
+  );
+};
 
-  try {
-    const systemPrompt = `
-You are a senior React + Tailwind engineer. Generate ONE mobile AppDemo component (max-w-[430px], 9:16 feel) that is a direct prototype of the idea in the brief—not a generic template.
+const PROTOTYPE_SYSTEM_PROMPT = (refinedBrief: string) => `
+You are a senior React + Tailwind engineer. Generate ONE mobile AppDemo component (max-w-[430px], 9:16 feel) that looks like a REAL app for the idea in the brief—NOT a generic template where only the words change.
 
-STRICT RULES:
-1. Main headline or hero text MUST be the brief's VALUE PROPOSITION (or a short punchy version of it). Do not use "Your Prototype" or "Signal Scanner" or generic titles.
-2. Subtitle or supporting copy MUST reflect TARGET AUDIENCE (who it's for) and/or ESSENTIAL FEATURE.
-3. The primary UI (cards, list, dashboard) MUST showcase the ESSENTIAL FEATURE—e.g. if the feature is "habit tracker", show habit-related items; if "recipe finder", show recipe cards. No placeholder labels like "Signal Scout" or "Deal Flow" unless the brief is about signals/deals.
-4. Colors, typography, and mood MUST follow APP FEEL / VIBE (e.g. "playful" → rounded, bright; "minimal" → lots of whitespace; "dark" → dark theme).
-5. Every visible string in the UI must come from the brief sections above—no lorem ipsum, no generic "Your idea" or "Feature one". Extract real phrases from VALUE PROPOSITION, TARGET AUDIENCE, ESSENTIAL FEATURE, and APP FEEL.
-6. Return ONLY the AppDemo function body as raw JSX. No import/export. Use React, Tailwind, optional Framer Motion. Do not use the word NomadGate anywhere.
+CRITICAL — DO NOT DO THIS:
+- Do NOT use a fixed layout with sections titled "YOUR IDEA", "VIBE", "THE IDEA", or "Brief Snapshot".
+- Do NOT output the same card structure for every app (hero + vibe card + idea card + 3 generic cards). Every app type must have its own layout.
+
+REQUIRED — DO THIS:
+1. INFER THE APP TYPE from the brief (e.g. dating, habit tracker, recipe finder, marketplace, social, fitness, finance). Design screens that match that type:
+   - Dating / "find love" → profile cards, match %, messages or chat preview, swipe-style or list of people with names and short bios.
+   - Habit tracker → today's habits with checkboxes, streak counts, calendar dots.
+   - Recipe / food → recipe cards with dish names, images placeholders, time, ingredients.
+   - Social / feed → post cards with usernames, likes, comments, timestamps.
+   - Marketplace → product/listings with titles, prices, optional images.
+   - Fitness → workouts, stats, progress.
+2. USE FICTIONAL DATA that fits the brief: realistic names, numbers, labels (e.g. for students: "Alex, 22 • Campus", "Jamie", "3 new matches"; for recipes: "Pasta Carbonara", "15 min"). No "Lorem ipsum" or "Sample text". All copy must feel real for that app and audience.
+3. LAYOUT must be specific to the app: different sections, primary actions, and navigation. E.g. a dating app has a different structure than a habit app.
+4. VALUE PROPOSITION = main purpose; TARGET AUDIENCE = tone and sample data (e.g. students → casual names, campus); ESSENTIAL FEATURE = main UI (e.g. "find love nearby" → map or list of people); APP FEEL = colors and style (clean, playful, dark, etc.).
+5. Return ONLY the AppDemo function body as raw JSX. No import/export. Use React, Tailwind, optional Framer Motion. Do not use the word NomadGate anywhere.
 
 BRIEF:
 ${refinedBrief}
 `.trim();
 
-    const text = await withTimeout(
-      callGeminiProxy("gemini-3-pro-preview", [{ parts: [{ text: systemPrompt }] }]),
-      PROTOTYPE_TIMEOUT_MS,
+export const generatePrototypeFromBrief = async (
+  refinedBrief: string
+): Promise<PrototypeData> => {
+  const PROTOTYPE_TIMEOUT_MS = 50_000;
+
+  try {
+    const systemPrompt = PROTOTYPE_SYSTEM_PROMPT(refinedBrief);
+
+    const text = await withRetry(
+      () => withTimeout(
+        callGeminiProxy(MODELS.PROTOTYPE, [{ parts: [{ text: systemPrompt }] }]),
+        PROTOTYPE_TIMEOUT_MS,
+        "generatePrototypeFromBrief"
+      ),
       "generatePrototypeFromBrief"
     );
 
@@ -280,6 +319,17 @@ ${refinedBrief}
     if (!code) {
       console.warn("[LaunchPad] Gemini returned empty code, using local template.");
       return buildLocalPrototype(refinedBrief);
+    }
+    if (looksLikeTemplate(code)) {
+      console.warn("[LaunchPad] Gemini returned template-like code, retrying with stricter prompt.");
+      const retryPrompt = systemPrompt + "\n\nIMPORTANT: You previously returned a generic template. This time generate a layout and content that are SPECIFIC to the app type (e.g. dating app = profile cards and matches, not generic idea cards). Use fictional names and data.";
+      const retryText = await withTimeout(
+        callGeminiProxy(MODELS.PROTOTYPE, [{ parts: [{ text: retryPrompt }] }]),
+        PROTOTYPE_TIMEOUT_MS,
+        "generatePrototypeFromBrief-retry"
+      ).catch(() => "");
+      const retryCode = extractPureCode(retryText);
+      if (retryCode && !looksLikeTemplate(retryCode)) code = retryCode;
     }
     code = code.replace(/\bNomadGate\b/gi, "Your prototype");
 
@@ -300,7 +350,7 @@ ${refinedBrief}
 export const debugCode = async (errorCode: string, logs: string): Promise<string> => {
   try {
     const prompt = `Fix the React component named AppDemo.\nLogs:\n${logs}\n\nCurrent Code:\n${errorCode}`;
-    const text = await callGeminiProxy("gemini-3-pro-preview", [
+    const text = await callGeminiProxy(MODELS.PROTOTYPE, [
       { parts: [{ text: prompt }] },
     ]);
     const code = extractPureCode(text);
@@ -318,7 +368,7 @@ export const modifyPrototype = async (
 ): Promise<string> => {
   try {
     const prompt = `You are updating a React component named AppDemo.\nApply this change request while keeping the structure clean:\n${changeRequest}\n\nCurrent Code:\n${currentCode}`;
-    const text = await callGeminiProxy("gemini-3-pro-preview", [
+    const text = await callGeminiProxy(MODELS.PROTOTYPE, [
       { parts: [{ text: prompt }] },
     ]);
     const code = extractPureCode(text);

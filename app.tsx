@@ -17,6 +17,7 @@ import ComplexityNotification from './components/ComplexityNotification';
 import { refineProjectBrief, generatePrototypeFromBrief, debugCode, modifyPrototype } from './services/geminiService';
 import { syncUserProfile, fetchUserProfile, auth, isSupabaseConfigured, saveProject, fetchUserProjects, deleteProject, logRepair, supabase } from './services/supabaseService';
 import { triggerBackgroundSynthesis } from './services/emailService';
+import { getStepFromLocation, navigateToStep, stepHasOwnUrl, syncPathToStep, ROUTER_STORAGE } from './services/urlRouter';
 
 const SUPER_USER_EMAIL = "l.macrellino@gmail.com";
 
@@ -31,8 +32,14 @@ const GENERATION_PHRASES = [
 ];
 
 const App: React.FC = () => {
-  const [currentStep, setCurrentStep] = useState<AppStep>(AppStep.LANDING);
-  const [quizData, setQuizData] = useState<StartupQuiz | null>(null);
+  const [currentStep, setCurrentStep] = useState<AppStep>(() => (typeof window !== 'undefined' ? getStepFromLocation() : AppStep.LANDING));
+  const [quizData, setQuizData] = useState<StartupQuiz | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem(ROUTER_STORAGE.QUIZ);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  });
   const [imageData, setImageData] = useState<string | null>(null);
   const [generatedBrief, setGeneratedBrief] = useState<string>('');
   const [prototypeData, setPrototypeData] = useState<PrototypeData | null>(null);
@@ -71,6 +78,33 @@ const App: React.FC = () => {
       loadProjects(userState.id);
     }
   }, [userState.id]);
+
+  // Restore dashboard state when landing on dashboard subdomain/path (e.g. after full reload)
+  useEffect(() => {
+    if (currentStep !== AppStep.DASHBOARD || prototypeData) return;
+    const projectId = localStorage.getItem(ROUTER_STORAGE.ACTIVE_PROJECT_ID);
+    const savedProto = localStorage.getItem(ROUTER_STORAGE.PROTOTYPE);
+    const savedBrief = localStorage.getItem(ROUTER_STORAGE.BRIEF);
+    if (savedProto && savedBrief) {
+      try {
+        const proto = JSON.parse(savedProto) as PrototypeData;
+        setPrototypeData(proto);
+        setGeneratedBrief(savedBrief);
+        if (projectId) setActiveProjectId(projectId);
+      } catch (_) { /* ignore */ }
+      return;
+    }
+    if (projectId && userState.id) {
+      fetchUserProjects(userState.id).then(projects => {
+        const p = projects.find(pr => pr.id === projectId);
+        if (p && p.code && p.code.trim().length > 100) {
+          setPrototypeData({ title: p.name, code: p.code, theme: { primary: "#6366f1", secondary: "#ff0050", font: "Inter" } });
+          setGeneratedBrief(p.prompt);
+          setActiveProjectId(p.id);
+        }
+      }).catch(() => {});
+    }
+  }, [currentStep, userState.id]);
 
   const loadProjects = async (uid: string) => {
     setIsVaultSyncing(true);
@@ -127,6 +161,12 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    const handlePopState = () => setCurrentStep(getStepFromLocation());
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  useEffect(() => {
     let phraseIndex = 0;
     let interval: any;
     if (currentStep === AppStep.GENERATING) {
@@ -174,7 +214,7 @@ const App: React.FC = () => {
       return;
     }
     setIsProcessing(true);
-    setCurrentStep(AppStep.GENERATING);
+    goToStep(AppStep.GENERATING);
     let canProceed: boolean;
     try {
       canProceed = await checkGateOpen();
@@ -183,7 +223,7 @@ const App: React.FC = () => {
     }
     if (!canProceed) {
       setIsProcessing(false);
-      setCurrentStep(AppStep.UPLOAD);
+      goToStep(AppStep.UPLOAD, quizData ? { quiz: quizData } : undefined);
       setShowPaywall(true);
       return;
     }
@@ -191,7 +231,7 @@ const App: React.FC = () => {
       setShowComplexityPopup(true);
     }, 120000);
 
-    const GENERATION_TIMEOUT_MS = 48_000;
+    const GENERATION_TIMEOUT_MS = 90_000;
 
     try {
       await Promise.race([
@@ -208,7 +248,7 @@ const App: React.FC = () => {
       ]);
     } catch (err: any) {
       setGenerationError(err?.message || 'Something went wrong. Please try again.');
-      setCurrentStep(AppStep.REPAIRING);
+      goToStep(AppStep.REPAIRING);
     } finally {
       setIsProcessing(false);
       setIsBackgroundMode(false);
@@ -220,12 +260,14 @@ const App: React.FC = () => {
 
   const finalizeGeneration = async (prototype: PrototypeData, briefUsed: string) => {
     setPrototypeData(prototype);
+    let savedId: string | null = activeProjectId;
     if (userState.id) {
       const uid = userState.id;
       try {
         const savePromise = (async () => {
           const saved = await saveProject(uid, prototype.title, briefUsed, prototype.code, activeProjectId || undefined);
           if (saved) {
+            savedId = saved.id;
             setActiveProjectId(saved.id);
             setUserProjects(prev => {
               const filtered = prev.filter(p => p.id !== saved.id);
@@ -252,7 +294,7 @@ const App: React.FC = () => {
       setReadyToast(prototype.title);
       setTimeout(() => setReadyToast(null), 8000);
     } else {
-      setCurrentStep(AppStep.DASHBOARD);
+      goToStep(AppStep.DASHBOARD, { activeProjectId: savedId, prototype, brief: briefUsed });
     }
   };
 
@@ -309,12 +351,29 @@ const App: React.FC = () => {
     setIsBackgroundMode(true);
     setShowComplexityPopup(false);
     setIsSendingEmail(false);
-    setCurrentStep(AppStep.VAULT); 
+    goToStep(AppStep.VAULT);
     return success;
   };
 
+  const persistState = (state: { quiz?: StartupQuiz; activeProjectId?: string | null; prototype?: PrototypeData | null; brief?: string }) => {
+    if (state.quiz != null) localStorage.setItem(ROUTER_STORAGE.QUIZ, JSON.stringify(state.quiz));
+    if (state.activeProjectId != null) localStorage.setItem(ROUTER_STORAGE.ACTIVE_PROJECT_ID, state.activeProjectId);
+    if (state.prototype != null) localStorage.setItem(ROUTER_STORAGE.PROTOTYPE, JSON.stringify(state.prototype));
+    if (state.brief != null) localStorage.setItem(ROUTER_STORAGE.BRIEF, state.brief);
+  };
+
+  const goToStep = (step: AppStep, stateToPersist?: { quiz?: StartupQuiz; activeProjectId?: string | null; prototype?: PrototypeData | null; brief?: string }) => {
+    if (stateToPersist) persistState(stateToPersist);
+    if (stepHasOwnUrl(step)) {
+      navigateToStep(step, undefined, () => setCurrentStep(step));
+    } else {
+      setCurrentStep(step);
+      syncPathToStep(step);
+    }
+  };
+
   const goToVault = () => {
-    if (userState.isSubscribed || isSuperUser) setCurrentStep(AppStep.VAULT);
+    if (userState.isSubscribed || isSuperUser) goToStep(AppStep.VAULT);
     else setShowPaywall(true);
   };
 
@@ -329,7 +388,7 @@ const App: React.FC = () => {
       localStorage.removeItem('launchpad_user');
       setUserProjects([]);
       setShowUserMenu(false);
-      setCurrentStep(AppStep.LANDING);
+      goToStep(AppStep.LANDING);
     }
   };
 
@@ -447,7 +506,7 @@ const App: React.FC = () => {
       </AnimatePresence>
 
       <nav className="flex items-center justify-between px-8 py-6 max-w-7xl mx-auto w-full relative z-[500]">
-        <div className="flex items-center gap-3 cursor-pointer" onClick={() => setCurrentStep(AppStep.LANDING)}>
+        <div className="flex items-center gap-3 cursor-pointer" onClick={() => goToStep(AppStep.LANDING)}>
           <div className="w-10 h-10 neon-pink rounded-xl flex items-center justify-center">
             <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
           </div>
@@ -500,8 +559,8 @@ const App: React.FC = () => {
 
       <main className="max-w-6xl mx-auto px-6 py-4 flex-grow w-full">
         <AnimatePresence mode="wait">
-          {currentStep === AppStep.LANDING && <LandingPage onStart={() => setCurrentStep(AppStep.QUIZ)} />}
-          {currentStep === AppStep.QUIZ && <Quiz onComplete={d => { setQuizData(d); setCurrentStep(AppStep.UPLOAD); }} />}
+          {currentStep === AppStep.LANDING && <LandingPage onStart={() => goToStep(AppStep.QUIZ)} />}
+          {currentStep === AppStep.QUIZ && <Quiz onComplete={d => { setQuizData(d); goToStep(AppStep.UPLOAD, { quiz: d }); }} />}
           {currentStep === AppStep.UPLOAD && <ImageUpload onComplete={handleStartGeneration} />}
           {currentStep === AppStep.GENERATING && (
             <div className="flex flex-col items-center justify-center py-32 text-center h-full">
@@ -545,7 +604,7 @@ const App: React.FC = () => {
                   {isProcessing ? "Repairing..." : "Repair Build"}
                 </button>
                 <button
-                  onClick={() => { setGenerationError(null); setCurrentStep(AppStep.UPLOAD); }}
+                  onClick={() => { setGenerationError(null); goToStep(AppStep.UPLOAD, quizData ? { quiz: quizData } : undefined); }}
                   className="px-8 py-4 bg-white/5 border border-white/10 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-white/10 transition-all"
                 >
                   Try Again
@@ -570,20 +629,19 @@ const App: React.FC = () => {
               isLoading={isVaultSyncing}
               onSync={() => loadProjects(userState.id!)}
               onSelectProject={p => { 
-                // CRITICAL SELECTION GUARD: If code is too short (placeholder), strictly block Dashboard access
-                // unfinished cloud builds often have no code or very short text.
                 const isCodeValid = p.code && p.code.trim().length > 100;
                 if(!isCodeValid || p.id.startsWith('pending')) {
                   setLockingToast(true);
                   return;
                 }
+                const proto = { title: p.name, code: p.code, theme: { primary: "#6366f1", secondary: "#ff0050", font: "Inter" } as const };
                 setGeneratedBrief(p.prompt); 
                 setActiveProjectId(p.id); 
-                setPrototypeData({ title: p.name, code: p.code, theme: { primary: "#6366f1", secondary: "#ff0050", font: "Inter" } }); 
-                setCurrentStep(AppStep.DASHBOARD); 
+                setPrototypeData(proto); 
+                goToStep(AppStep.DASHBOARD, { activeProjectId: p.id, prototype: proto, brief: p.prompt }); 
               }} 
               onDeleteProject={handleDeleteProject} 
-              onStartNew={() => { setActiveProjectId(null); setCurrentStep(AppStep.LANDING); }} 
+              onStartNew={() => { setActiveProjectId(null); goToStep(AppStep.LANDING); }} 
             />
           )}
         </AnimatePresence>

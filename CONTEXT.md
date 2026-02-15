@@ -12,6 +12,24 @@ Use this file to give the AI full context. Update it when things change.
 
 ---
 
+## Routing (path-based, best practice)
+
+All pages use paths on the same domain (no subdomains):
+
+| Page     | URL |
+|----------|-----|
+| Landing  | `https://launchpadai.click/` |
+| Quiz     | `https://launchpadai.click/quiz` |
+| Upload   | `https://launchpadai.click/upload` |
+| Dashboard| `https://launchpadai.click/dashboard` |
+| Vault    | `https://launchpadai.click/vault` |
+
+- **Router:** `services/urlRouter.ts` — path-only; `getStepFromLocation()`, `navigateToStep()`, `syncPathToStep()`.
+- **State on refresh:** On reload at `/upload` or `/dashboard`, state is restored from `localStorage` keys in `ROUTER_STORAGE`.
+- **SPA:** Cloudflare Pages (and Vite dev) must serve `index.html` for these paths so the app loads; then the router reads the path.
+
+---
+
 ## Deployment
 
 - **Hosting:** Cloudflare (Pages or Workers)
@@ -29,6 +47,8 @@ Use this file to give the AI full context. Update it when things change.
 | Gemini (via proxy) | AI generation              | Supabase Edge Function `gemini-proxy` |
 | Stripe         | Payments                         | `services/stripeService.ts`        |
 | Resend         | Email (background synthesis)     | Supabase Edge Function secrets     |
+
+**AI reliability:** Brief and prototype use one retry on timeout/failure. Timeouts: brief 22s, prototype 50s, overall 90s. Models: `gemini-1.5-flash` (brief), `gemini-1.5-pro` (prototype); see `MODELS` in `services/geminiService.ts`. Edge Function aborts after 85s. **Alternatives:** OpenAI GPT-4o or Claude 3.5 Sonnet are often more reliable; would need a second Edge Function and prompts.
 
 ---
 

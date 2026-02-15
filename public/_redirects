@@ -1,0 +1,2 @@
+# SPA: serve index.html for all paths so client router can handle /quiz, /upload, etc.
+/*    /index.html   200
