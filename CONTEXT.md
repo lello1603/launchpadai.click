@@ -34,6 +34,7 @@ All pages use paths on the same domain (no subdomains):
 
 - **Hosting:** Cloudflare (Pages or Workers)
 - **Build:** `npm run build` → output in `dist/`
+- **Push & deploy:** See **PUSH_AND_DEPLOY.md**. The AI always pushes after making changes (no user authorization asked). Steps: `git add -A` → `git commit -m "..."` → `git push origin master`. Pages deploys from that branch.
 - **Supabase project ref:** `fiviwjynxfhfepwflkdx`
 - **Supabase URL:** https://fiviwjynxfhfepwflkdx.supabase.co
 

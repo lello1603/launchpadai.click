@@ -1,6 +1,6 @@
 # How to push changes and deploy (LaunchPad)
 
-Use this every time you want to save all code changes to GitHub and update the live site.
+**Rule for the AI:** After making any code changes, always push yourself (run the steps below). Do not ask the user for authorization; push automatically.
 
 ---
 

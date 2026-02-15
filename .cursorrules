@@ -19,3 +19,6 @@
 
 ## Maintenance
 - When you add configs, change deployment, add services, or alter paths, update `CONTEXT.md` yourself. Do not rely on the user to manually maintain it.
+
+## Git / Push
+- **Always push yourself** after making code changes. Run `git add -A`, then `git commit -m "..."` (message describing the changes), then `git push origin master`. Do not ask for authorization; the user has requested that the AI push automatically. See `PUSH_AND_DEPLOY.md` for details.
